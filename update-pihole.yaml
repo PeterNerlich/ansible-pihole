@@ -4,6 +4,6 @@
   serial: 1
   roles:
     - stop_keepalived
-    - updates
+    #- updates
     - pihole
     - start_keepalived

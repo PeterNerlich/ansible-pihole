@@ -28,26 +28,53 @@
     execution_mode: "single node setup"
   when: not pihole_ha_mode
 
+- name: Create redaktion network with IPv6
+  community.docker.docker_network:
+    name: redaktion
+    enable_ipv6: yes
+    ipam_config:
+      - subnet: fdd1:ac8c:0557:7ce1::/64
+
 - name: Start/Update pihole container
   docker_container:
     name: pihole
     image: "{{ pihole_image }}"
-    pull: yes
+    #pull: yes
     restart_policy: unless-stopped
     env:
       TZ: "{{ timezone }}"
       WEBPASSWORD: "{{ pihole_webpassword }}"
       PIHOLE_DNS_: "{{ pihole_dns }}"
-      DNSMASQ_LISTENING: "local"
+      #DNSMASQ_LISTENING: "local"
+      DNSMASQ_LISTENING: "all"
       REV_SERVER: "{{ pihole_rev_server }}"
       REV_SERVER_DOMAIN: "{{ pihole_rev_server_domain }}"
       REV_SERVER_TARGET: "{{ pihole_rev_server_target }}"
       REV_SERVER_CIDR: "{{ pihole_rev_server_cidr }}"
       FTLCONF_MAXDBDAYS: "{{ pihole_ftl_max_db_days }}"
+      WEB_PORT: "8080"
+      PROXY_LOCATION: pihole
+      VIRTUAL_HOST: pi.hole
+      VIRTUAL_PORT: "8080"
+    exposed_ports:
+      - "8080"
     dns_servers:
       - 127.0.0.1
       - "{{ static_dns }}"
-    network_mode: host
+    #network_mode: host
+    network_mode: bridge
+    ports:
+      - "{{ ansible_facts.eth0.ipv4.address }}:53:53/tcp"
+      - "{{ ansible_facts.eth0.ipv4.address }}:53:53/udp"
+      - "[{{ (ansible_facts.eth0.ipv6 | selectattr('scope', 'equalto', 'global') | list)[0].address }}]:53:53/tcp"
+      - "[{{ (ansible_facts.eth0.ipv6 | selectattr('scope', 'equalto', 'global') | list)[0].address }}]:53:53/udp"
+    #  - "67:67/udp" # Only required if you are using Pi-hole as your DHCP server
+    #  - "80:80/tcp"
+      - "8080:8080/tcp"
+    networks:
+    #  - name: bridge
+      - name: redaktion
+    purge_networks: true
     volumes:
       - "/home/{{ ansible_user }}/pihole/pihole/:/etc/pihole/"
       - "/home/{{ ansible_user }}/pihole/dnsmasq.d/:/etc/dnsmasq.d/"
@@ -58,7 +85,7 @@
 
 - name: Check pihole container
   uri:
-    url: http://localhost/admin
+    url: http://{{ ansible_facts.eth0.ipv4.address }}:8080
   register: result
   until: result.status == 200
   retries: 5
